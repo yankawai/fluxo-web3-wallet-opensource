@@ -1,7 +1,9 @@
 const storageKey = 'goWeb3WalletVault';
+const autoLockMs = 5 * 60 * 1000;
 
 let address = null;
 let sessionId = null;
+let autoLockTimer = null;
 
 const els = {
   status: document.getElementById('status'),
@@ -91,11 +93,13 @@ els.signMessage.addEventListener('click', async () => {
 });
 
 els.copyAddress.addEventListener('click', async () => {
+  armAutoLock();
   if (address) await navigator.clipboard.writeText(address);
   setStatus('address copied');
 });
 
 els.copySignature.addEventListener('click', async () => {
+  armAutoLock();
   if (els.signature.value) await navigator.clipboard.writeText(els.signature.value);
   setStatus('signature copied');
 });
@@ -103,7 +107,7 @@ els.copySignature.addEventListener('click', async () => {
 els.lockWallet.addEventListener('click', () => {
   lockActiveSession();
   lockMemory();
-  getVault().then(vault => renderLocked(address, vault)).catch(() => renderLocked(address));
+  renderLockedFromStorage(address);
 });
 
 els.resetWallet.addEventListener('click', async () => {
@@ -116,6 +120,23 @@ els.resetWallet.addEventListener('click', async () => {
 
 window.addEventListener('pagehide', () => {
   lockActiveSession();
+});
+
+window.addEventListener('beforeunload', () => {
+  lockActiveSession();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    const lockedAddress = address;
+    lockActiveSession();
+    lockMemory();
+    renderLockedFromStorage(lockedAddress);
+  }
+});
+
+['click', 'keydown', 'input'].forEach(eventName => {
+  document.addEventListener(eventName, armAutoLock, { passive: true });
 });
 
 function callCore(method, ...args) {
@@ -153,6 +174,7 @@ function requirePassword(password) {
 
 function lockMemory() {
   sessionId = null;
+  clearAutoLock();
   els.signature.value = '';
 }
 
@@ -176,6 +198,7 @@ function renderWallet(walletAddress) {
   els.setupPassword.value = '';
   els.unlockPassword.value = '';
   setStatus('unlocked');
+  armAutoLock();
   showOnly(els.walletView);
 }
 
@@ -210,6 +233,15 @@ function getVaultAddress(vault) {
   return vault?.header?.address || vault?.address || null;
 }
 
+async function renderLockedFromStorage(fallbackAddress = null) {
+  try {
+    const vault = await getVault();
+    renderLocked(getVaultAddress(vault) || fallbackAddress, vault);
+  } catch (_) {
+    renderLocked(fallbackAddress);
+  }
+}
+
 function formatVaultMeta(vault) {
   if (!vault) return 'encrypted local vault';
   if (vault.header?.version === 2) {
@@ -234,4 +266,21 @@ async function withButtonLock(button, status, task, onError) {
   } finally {
     button.disabled = false;
   }
+}
+
+function armAutoLock() {
+  if (!sessionId) return;
+  clearAutoLock();
+  autoLockTimer = setTimeout(() => {
+    const lockedAddress = address;
+    lockActiveSession();
+    lockMemory();
+    renderLockedFromStorage(lockedAddress);
+  }, autoLockMs);
+}
+
+function clearAutoLock() {
+  if (!autoLockTimer) return;
+  clearTimeout(autoLockTimer);
+  autoLockTimer = null;
 }
