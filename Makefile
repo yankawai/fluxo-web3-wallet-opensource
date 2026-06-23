@@ -1,4 +1,4 @@
-.PHONY: test vet fmt js-check manifest wasm extension package
+.PHONY: fmt test vet wasm check clean
 
 test:
 	go test ./...
@@ -9,19 +9,13 @@ vet:
 fmt:
 	gofmt -w ./cmd ./internal
 
-js-check:
-	node --check extension/popup.js
-
-manifest:
-	go test ./internal/extensioncheck
-
 wasm:
-	GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o extension/wallet.wasm ./cmd/walletwasm
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" extension/wasm_exec.js
-	chmod 644 extension/wallet.wasm extension/wasm_exec.js
+	mkdir -p dist/wasm
+	GOOS=js GOARCH=wasm go build -trimpath -buildvcs=false -o dist/wasm/wallet.wasm ./cmd/walletwasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm/wasm_exec.js
+	chmod 644 dist/wasm/wallet.wasm dist/wasm/wasm_exec.js
 
-extension: fmt test vet js-check manifest wasm
+check: fmt test vet wasm
 
-package: extension
-	rm -f fluxo-web3-wallet-opensource-extension.zip
-	cd extension && zip -r ../fluxo-web3-wallet-opensource-extension.zip .
+clean:
+	rm -rf dist

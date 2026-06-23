@@ -19,5 +19,4 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: test -z "$(gofmt -l ./cmd ./internal)"
-      - run: make extension
-      - run: make package
+      - run: make check

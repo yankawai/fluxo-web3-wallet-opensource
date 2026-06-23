@@ -1,21 +1,39 @@
-![Fluxo Web3 Wallet banner](docs/assets/fluxo-banner.png)
+![Fluxo banner](docs/assets/fluxo-banner.png)
 
-# Fluxo Web3 Wallet
+# Fluxo
 
-Fluxo is a minimal open-source Web3 wallet browser extension powered by a Go WebAssembly core.
+Fluxo is an open-source headless Web3 wallet core written in Go.
 
-The extension is local-first for custody: seed phrases are generated, encrypted, decrypted, and used for signing inside the Go WASM core. The popup stores only encrypted vault JSON and uses public RPC endpoints only to read native balances.
+This repository intentionally does not ship an application UI. It provides the wallet engine: HD seed phrase handling, encrypted vault storage formats, in-memory signing sessions, network metadata, and a small WASM bridge for teams that want to build their own interface on top.
+
+## What This Repo Is
+
+- A Go wallet core for BIP39 seed phrases and BIP44 Ethereum account derivation.
+- A hardened encrypted vault implementation using Argon2id and XChaCha20-Poly1305.
+- A session-based runtime that signs messages without exposing private keys.
+- A built-in EVM network registry for Ethereum, Sepolia, Polygon, Arbitrum, Optimism, and Base.
+- A buildable WASM adapter for browser, desktop, mobile, or embedded clients.
+
+## What This Repo Is Not
+
+- No bundled interface.
+- No application shell.
+- No hosted wallet app.
+- No dapp provider injection.
+- No transaction broadcasting.
+- No ERC-20 portfolio/indexer layer.
+
+Use Fluxo as wallet infrastructure and build the UX, storage adapter, RPC policy, and product surface that fit your own application.
 
 ## Architecture
 
-- `internal/walletcore`: Go wallet core for BIP39 seed phrases, BIP44 Ethereum account derivation, address derivation, and EIP-191 message signing.
-- `internal/networks`: built-in EVM network registry for Ethereum, Sepolia, Polygon, Arbitrum, Optimism, and Base.
-- `internal/vault`: Go-owned vault encryption, metadata validation, v1 migration, and in-memory session locking.
-- `internal/walletruntime`: application boundary that creates/unlocks vaults and signs messages only through session IDs.
-- `cmd/walletwasm`: small WASM bridge exposing the session-based wallet API to the extension.
-- `extension`: Manifest V3 popup UI that stores only the encrypted vault JSON in `chrome.storage.local`.
+- `internal/walletcore`: BIP39 seed phrase generation/validation, BIP44 Ethereum derivation, address derivation, and EIP-191 message signing.
+- `internal/vault`: vault models, Argon2id key derivation, XChaCha20-Poly1305 encryption, metadata authentication, legacy migration, and session locking.
+- `internal/walletruntime`: application boundary for creating/importing/unlocking vaults and signing only through session IDs.
+- `internal/networks`: default EVM network metadata.
+- `cmd/walletwasm`: WASM bridge exposing the same session-based wallet runtime to host applications.
 
-The seed phrase is generated, encrypted, decrypted, and used for account derivation inside the Go WASM core. JavaScript receives the seed phrase only once during wallet creation so the user can back it up. After that, JavaScript receives an address, encrypted vault JSON, network metadata, native balances, and a short-lived `sessionId`; it does not receive private keys.
+The runtime never exposes private keys. New wallet creation returns the generated seed phrase only once for backup. Import and unlock flows do not return mnemonic or private key material.
 
 ## Vault v3
 
@@ -24,75 +42,49 @@ New vaults use the v3 HD format:
 - KDF: Argon2id, 256 MiB memory, 4 passes, `p=1`, 32-byte salt, 32-byte key.
 - Cipher: XChaCha20-Poly1305 with a 24-byte nonce.
 - AAD: canonical vault header metadata, including version, kind, cipher, KDF params, address, and creation time.
-- Storage: `chrome.storage.local` contains only encrypted vault JSON.
 - Migration: legacy v1 PBKDF2-SHA256/AES-GCM vaults are decrypted only during unlock and immediately re-encrypted as legacy private-key v2 vaults.
 
 The KDF policy does not silently downgrade below the v3 defaults.
 
-## Build
+## Build And Test
 
 ```sh
-make extension
+make check
 ```
 
-This writes:
+This runs Go formatting, tests, vet, and a WASM bridge build.
 
-- `extension/wallet.wasm`
-- `extension/wasm_exec.js`
-
-## Load Locally
-
-1. Run `make extension`.
-2. Open Chrome or a Chromium-based browser.
-3. Go to `chrome://extensions`.
-4. Enable Developer Mode.
-5. Click "Load unpacked".
-6. Select the `extension/` directory.
-
-## Package
+To build only the WASM adapter:
 
 ```sh
-make package
+make wasm
 ```
 
-The zip file is created as `fluxo-web3-wallet-opensource-extension.zip`.
+Generated files are written to `dist/wasm/` and are intentionally ignored by git.
 
-## Current Capabilities
+## Runtime API
 
-- Generate and back up a 12-word seed phrase.
-- Import an existing BIP39 seed phrase.
-- Derive the first Ethereum account at `m/44'/60'/0'/0/0`.
-- Encrypt the seed phrase in Go WASM with XChaCha20-Poly1305.
-- Unlock the vault into a short-lived in-memory Go session.
-- Switch between Ethereum, Sepolia, Polygon, Arbitrum, Optimism, and Base.
-- Read native balances through public RPC endpoints.
-- Sign EIP-191 messages by `sessionId`.
-- Copy address and signatures.
-- Open the account in the active chain explorer.
-- Reset the local vault.
+The WASM bridge exposes these Go-owned methods under `globalThis.walletCore`:
 
-## Non-Goals
-
-- No hosted custody.
-- No ERC-20 token balances yet.
-- No transaction broadcasting.
-- No page provider injection.
-- No dapp permissions system yet.
-
-Those are intentionally omitted to keep the security surface small.
-
-## WASM API
-
-The extension calls these Go-owned methods:
-
-- `createVault(password) -> { vault, address, sessionId }`
-- `importVault(password, mnemonic) -> { vault, address, sessionId }`
-- `unlockVault(vault, password) -> { address, sessionId, migratedVault? }`
+- `createVault(password) -> { vault, address, account, accounts, sessionId, mnemonic, networks, activeChainId }`
+- `importVault(password, mnemonic) -> { vault, address, account, accounts, sessionId, networks, activeChainId }`
+- `unlockVault(vault, password) -> { address, account, accounts, sessionId, networks, activeChainId, migratedVault? }`
 - `signMessage(sessionId, message) -> { address, hash, signature }`
 - `lock(sessionId)`
 - `lockAll()`
 
 The API intentionally has no method that returns a private key.
+
+## Integration Notes
+
+Integrators are responsible for:
+
+- choosing where encrypted vault JSON is stored;
+- enforcing UX-level backup, lock, and reset flows;
+- selecting RPC endpoints and privacy policy;
+- adding token/indexer support if portfolio balances are needed;
+- exposing transaction review and broadcast flows if needed;
+- independently reviewing the security model before storing meaningful funds.
 
 ## Security
 
