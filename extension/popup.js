@@ -32,7 +32,18 @@ boot().catch(error => {
 
 async function boot() {
   await loadWasm();
-  const vault = await getVault();
+  await hardenStorageAccess().catch(() => {
+    setStatus('storage hardening unavailable');
+  });
+  let vault = null;
+  try {
+    vault = await getVault();
+  } catch (_) {
+    lockAllSessions();
+    renderSetup();
+    setStatus('vault data invalid');
+    return;
+  }
   if (!vault) {
     renderSetup();
     return;
@@ -74,6 +85,7 @@ els.unlockWallet.addEventListener('click', async () => {
     address = response.address;
     renderWallet(response.address);
   }, () => {
+    lockAllSessions();
     lockMemory();
     setStatus('unlock failed');
   });
@@ -158,11 +170,13 @@ async function waitForWalletCore() {
 
 async function getVault() {
   const result = await chrome.storage.local.get(storageKey);
-  return result[storageKey] || null;
+  const vault = result[storageKey] || null;
+  if (!vault) return null;
+  return normalizeStoredVault(vault);
 }
 
 async function storeVault(vault) {
-  await chrome.storage.local.set({ [storageKey]: vault });
+  await chrome.storage.local.set({ [storageKey]: normalizeStoredVault(vault) });
 }
 
 function requirePassword(password) {
@@ -231,6 +245,45 @@ function lockAllSessions() {
 
 function getVaultAddress(vault) {
   return vault?.header?.address || vault?.address || null;
+}
+
+async function hardenStorageAccess() {
+  if (!chrome.storage.local.setAccessLevel) return;
+  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+}
+
+function normalizeStoredVault(vault) {
+  if (!vault || typeof vault !== 'object') {
+    throw new Error('stored vault is invalid');
+  }
+  if (vault.header?.version === 2) {
+    const header = vault.header;
+    requireString(header.address, 'vault address');
+    requireString(header.cipher, 'vault cipher');
+    requireString(header.kdf, 'vault kdf');
+    requireString(header.createdAt, 'vault createdAt');
+    if (!header.kdfParams || typeof header.kdfParams !== 'object') {
+      throw new Error('vault kdf params missing');
+    }
+    requireString(vault.salt, 'vault salt');
+    requireString(vault.nonce, 'vault nonce');
+    requireString(vault.ciphertext, 'vault ciphertext');
+    return vault;
+  }
+  if (vault.version === 1) {
+    requireString(vault.address, 'legacy vault address');
+    requireString(vault.salt, 'legacy vault salt');
+    requireString(vault.iv, 'legacy vault iv');
+    requireString(vault.ciphertext, 'legacy vault ciphertext');
+    return vault;
+  }
+  throw new Error('unsupported stored vault version');
+}
+
+function requireString(value, field) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(`${field} is invalid`);
+  }
 }
 
 async function renderLockedFromStorage(fallbackAddress = null) {
