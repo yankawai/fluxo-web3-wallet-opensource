@@ -10,6 +10,7 @@ let accounts = [];
 let networks = [];
 let activeChainId = 1;
 let autoLockTimer = null;
+let copyFeedbackTimer = null;
 
 const els = {
   status: document.getElementById('status'),
@@ -36,13 +37,23 @@ const els = {
   unlockWallet: document.getElementById('unlockWallet'),
   accountName: document.getElementById('accountName'),
   walletAddressShort: document.getElementById('walletAddressShort'),
+  copyState: document.getElementById('copyState'),
   networkSelect: document.getElementById('networkSelect'),
+  networkIcon: document.getElementById('networkIcon'),
+  networkName: document.getElementById('networkName'),
+  networkMeta: document.getElementById('networkMeta'),
   balanceValue: document.getElementById('balanceValue'),
   balanceSymbol: document.getElementById('balanceSymbol'),
+  balanceHint: document.getElementById('balanceHint'),
+  chartDelta: document.getElementById('chartDelta'),
   refreshBalance: document.getElementById('refreshBalance'),
   openExplorer: document.getElementById('openExplorer'),
+  focusSigner: document.getElementById('focusSigner'),
+  assetSync: document.getElementById('assetSync'),
+  assetList: document.getElementById('assetList'),
   accountList: document.getElementById('accountList'),
   derivationPath: document.getElementById('derivationPath'),
+  signingDetails: document.getElementById('signingDetails'),
   message: document.getElementById('message'),
   signature: document.getElementById('signature'),
   signMessage: document.getElementById('signMessage'),
@@ -166,8 +177,22 @@ els.openExplorer.addEventListener('click', () => {
 
 els.copyAddress.addEventListener('click', async () => {
   armAutoLock();
-  if (address) await navigator.clipboard.writeText(address);
-  setStatus('address copied');
+  if (!address) return;
+  try {
+    await navigator.clipboard.writeText(address);
+    showCopyFeedback('Copied');
+    setStatus('address copied');
+  } catch (_) {
+    showCopyFeedback('Copy failed');
+    setStatus('clipboard blocked');
+  }
+});
+
+els.focusSigner.addEventListener('click', () => {
+  armAutoLock();
+  els.signingDetails.open = true;
+  document.getElementById('signingPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  els.message.focus();
 });
 
 els.signMessage.addEventListener('click', () => {
@@ -191,6 +216,25 @@ els.lockWallet.addEventListener('click', () => {
   lockActiveSession();
   lockMemory();
   renderLockedFromStorage(address);
+});
+
+document.querySelectorAll('.range-tab').forEach(button => {
+  button.addEventListener('click', () => {
+    document.querySelectorAll('.range-tab').forEach(item => item.classList.remove('active'));
+    button.classList.add('active');
+  });
+});
+
+document.querySelectorAll('[data-jump]').forEach(button => {
+  button.addEventListener('click', () => {
+    const target = document.getElementById(button.dataset.jump);
+    if (!target) return;
+    document.querySelectorAll('[data-jump]').forEach(item => item.classList.remove('active'));
+    button.classList.add('active');
+    if (target.id === 'signingPanel') els.signingDetails.open = true;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    armAutoLock();
+  });
 });
 
 els.resetWallet.addEventListener('click', async () => {
@@ -317,6 +361,7 @@ function renderWallet() {
   els.derivationPath.textContent = account?.path || 'imported';
   renderNetworkOptions();
   renderNetwork();
+  renderAssets('-.----');
   renderAccounts();
   els.setupPassword.value = '';
   els.setupPasswordConfirm.value = '';
@@ -325,6 +370,9 @@ function renderWallet() {
   els.unlockPassword.value = '';
   els.balanceValue.textContent = '-.----';
   els.balanceSymbol.textContent = network?.symbol || 'ETH';
+  els.balanceHint.textContent = network ? `Native balance on ${network.name}` : 'Live native balance';
+  els.assetSync.textContent = 'waiting';
+  els.chartDelta.textContent = 'RPC live';
   els.signature.value = '';
   setStatus('unlocked');
   showOnly(els.walletView);
@@ -336,7 +384,7 @@ function renderNetworkOptions() {
   networks.forEach(network => {
     const option = document.createElement('option');
     option.value = String(network.chainId);
-    option.textContent = network.name;
+    option.textContent = `${network.name} (${network.symbol})`;
     option.selected = network.chainId === activeChainId;
     els.networkSelect.appendChild(option);
   });
@@ -345,8 +393,14 @@ function renderNetworkOptions() {
 function renderNetwork() {
   const network = getActiveNetwork();
   if (!network) return;
+  const key = normalizeNetworkKey(network);
+  els.networkIcon.dataset.network = key;
+  els.networkName.textContent = shortNetworkName(network.name);
+  els.networkMeta.textContent = `Chain ${network.chainId}`;
   els.balanceSymbol.textContent = network.symbol;
+  els.balanceHint.textContent = `Native balance on ${network.name}`;
   els.networkSelect.value = String(network.chainId);
+  renderAssets(els.balanceValue.textContent);
 }
 
 function renderAccounts() {
@@ -362,20 +416,67 @@ function renderAccounts() {
   });
 }
 
+function renderAssets(balanceText) {
+  const network = getActiveNetwork();
+  if (!network || !els.assetList) return;
+  els.assetList.textContent = '';
+  const row = document.createElement('div');
+  row.className = 'asset-row';
+
+  const main = document.createElement('div');
+  main.className = 'asset-main';
+
+  const icon = document.createElement('span');
+  icon.className = 'asset-icon';
+  icon.dataset.network = normalizeNetworkKey(network);
+
+  const copy = document.createElement('span');
+  copy.className = 'asset-copy';
+  const title = document.createElement('strong');
+  title.textContent = network.symbol;
+  const subtitle = document.createElement('small');
+  subtitle.textContent = `${network.name} native asset`;
+  copy.append(title, subtitle);
+
+  const value = document.createElement('span');
+  value.className = 'asset-value';
+  const amount = document.createElement('strong');
+  amount.textContent = formatAssetAmount(balanceText, network.symbol);
+  const meta = document.createElement('small');
+  meta.textContent = network.chainId === 1 ? 'Ethereum mainnet' : `Chain ${network.chainId}`;
+  value.append(amount, meta);
+
+  main.append(icon, copy);
+  row.append(main, value);
+  els.assetList.appendChild(row);
+}
+
 async function refreshBalance() {
   if (!address || !sessionId) return;
   const network = getActiveNetwork();
   if (!network) return;
   setStatus('syncing');
   els.balanceValue.textContent = 'loading';
+  els.balanceHint.textContent = `Querying ${network.name}`;
+  els.assetSync.textContent = 'syncing';
+  els.chartDelta.textContent = 'syncing';
+  renderAssets('loading');
   try {
     const balanceHex = await rpcCall(network.rpcUrl, 'eth_getBalance', [address, 'latest']);
     const value = formatNativeBalance(balanceHex);
     els.balanceValue.textContent = value;
     els.balanceSymbol.textContent = network.symbol;
+    els.balanceHint.textContent = `Updated from ${network.name}`;
+    els.assetSync.textContent = 'live';
+    els.chartDelta.textContent = 'RPC live';
+    renderAssets(value);
     setStatus('online');
   } catch (_) {
-    els.balanceValue.textContent = 'unavailable';
+    els.balanceValue.textContent = 'offline';
+    els.balanceHint.textContent = `${network.name} RPC unavailable`;
+    els.assetSync.textContent = 'offline';
+    els.chartDelta.textContent = 'RPC offline';
+    renderAssets('offline');
     setStatus('rpc offline');
   }
 }
@@ -403,6 +504,23 @@ function getActiveNetwork() {
   return networks.find(network => network.chainId === activeChainId) || networks[0] || null;
 }
 
+function normalizeNetworkKey(network) {
+  if (!network?.key) return 'ethereum';
+  if (network.key === 'sepolia') return 'sepolia';
+  return network.key;
+}
+
+function shortNetworkName(name) {
+  return name.replace(' One', '').replace('Mainnet', '').trim();
+}
+
+function formatAssetAmount(value, symbol) {
+  if (!value || value === '-.----') return `-.---- ${symbol}`;
+  if (value === 'loading') return `syncing ${symbol}`;
+  if (value === 'unavailable' || value === 'offline') return 'offline';
+  return `${value} ${symbol}`;
+}
+
 function requirePassword(password) {
   if (!password || password.length < 12) throw new Error('password must be 12+ characters');
   return password;
@@ -423,6 +541,7 @@ function lockMemory() {
   account = null;
   accounts = [];
   clearAutoLock();
+  showCopyFeedback('Copy', false);
   if (els.signature) els.signature.value = '';
 }
 
@@ -433,6 +552,17 @@ function showOnly(view) {
 
 function setStatus(value) {
   els.status.textContent = value;
+}
+
+function showCopyFeedback(value, temporary = true) {
+  clearTimeout(copyFeedbackTimer);
+  els.copyState.textContent = value;
+  els.copyAddress.classList.toggle('copied', value === 'Copied');
+  if (!temporary) return;
+  copyFeedbackTimer = setTimeout(() => {
+    els.copyState.textContent = 'Copy';
+    els.copyAddress.classList.remove('copied');
+  }, 1400);
 }
 
 function lockActiveSession() {
