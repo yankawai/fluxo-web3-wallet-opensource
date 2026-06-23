@@ -71,6 +71,10 @@ func DefaultArgon2idParams() Argon2idParams {
 }
 
 func (v Vault) Validate() error {
+	return validateVault(v, ValidateProductionParams)
+}
+
+func validateVault(v Vault, validateKDF func(Argon2idParams) error) error {
 	if v.Header.Version != FormatVersion {
 		return fmt.Errorf("%w: version %d", ErrInvalidVault, v.Header.Version)
 	}
@@ -80,8 +84,10 @@ func (v Vault) Validate() error {
 	if v.Header.KDF != KDFArgon2id {
 		return fmt.Errorf("%w: %q", ErrUnsupportedKDF, v.Header.KDF)
 	}
-	if err := ValidateProductionParams(v.Header.KDFParams); err != nil {
-		return err
+	if validateKDF != nil {
+		if err := validateKDF(v.Header.KDFParams); err != nil {
+			return err
+		}
 	}
 	if !isEthereumAddressShape(v.Header.Address) {
 		return fmt.Errorf("%w: invalid address metadata", ErrInvalidVault)
