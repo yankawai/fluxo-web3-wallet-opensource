@@ -11,6 +11,7 @@ const els = {
   setupPassword: document.getElementById('setupPassword'),
   unlockPassword: document.getElementById('unlockPassword'),
   lockedAddress: document.getElementById('lockedAddress'),
+  vaultMeta: document.getElementById('vaultMeta'),
   walletAddress: document.getElementById('walletAddress'),
   message: document.getElementById('message'),
   signature: document.getElementById('signature'),
@@ -34,7 +35,7 @@ async function boot() {
     renderSetup();
     return;
   }
-  renderLocked(getVaultAddress(vault));
+  renderLocked(getVaultAddress(vault), vault);
 }
 
 async function loadWasm() {
@@ -45,21 +46,21 @@ async function loadWasm() {
 }
 
 els.createWallet.addEventListener('click', async () => {
-  try {
+  withButtonLock(els.createWallet, 'creating', async () => {
     const password = requirePassword(els.setupPassword.value);
     const response = callCore('createVault', password);
     await storeVault(response.vault);
     sessionId = response.sessionId;
     address = response.address;
     renderWallet(response.address);
-  } catch (error) {
+  }, error => {
     lockAllSessions();
     setStatus(error.message || 'create failed');
-  }
+  });
 });
 
 els.unlockWallet.addEventListener('click', async () => {
-  try {
+  withButtonLock(els.unlockWallet, 'unlocking', async () => {
     const password = requirePassword(els.unlockPassword.value);
     const vault = await getVault();
     if (!vault) throw new Error('vault missing');
@@ -70,23 +71,23 @@ els.unlockWallet.addEventListener('click', async () => {
     sessionId = response.sessionId;
     address = response.address;
     renderWallet(response.address);
-  } catch (error) {
+  }, () => {
     lockMemory();
     setStatus('unlock failed');
-  }
+  });
 });
 
 els.signMessage.addEventListener('click', async () => {
-  try {
+  withButtonLock(els.signMessage, 'signing', async () => {
     if (!sessionId) throw new Error('wallet locked');
     const message = els.message.value.trim();
     if (!message) throw new Error('message required');
     const signed = callCore('signMessage', sessionId, message);
     els.signature.value = signed.signature;
     setStatus('signed');
-  } catch (error) {
+  }, error => {
     setStatus(error.message || 'sign failed');
-  }
+  });
 });
 
 els.copyAddress.addEventListener('click', async () => {
@@ -102,7 +103,7 @@ els.copySignature.addEventListener('click', async () => {
 els.lockWallet.addEventListener('click', () => {
   lockActiveSession();
   lockMemory();
-  renderLocked(address);
+  getVault().then(vault => renderLocked(address, vault)).catch(() => renderLocked(address));
 });
 
 els.resetWallet.addEventListener('click', async () => {
@@ -160,9 +161,10 @@ function renderSetup() {
   showOnly(els.setupView);
 }
 
-function renderLocked(walletAddress) {
+function renderLocked(walletAddress, vault = null) {
   address = walletAddress || null;
   els.lockedAddress.textContent = walletAddress || '-';
+  els.vaultMeta.textContent = formatVaultMeta(vault);
   els.unlockPassword.value = '';
   setStatus('locked');
   showOnly(els.lockedView);
@@ -206,4 +208,30 @@ function lockAllSessions() {
 
 function getVaultAddress(vault) {
   return vault?.header?.address || vault?.address || null;
+}
+
+function formatVaultMeta(vault) {
+  if (!vault) return 'encrypted local vault';
+  if (vault.header?.version === 2) {
+    const params = vault.header.kdfParams || {};
+    const memoryMiB = params.memoryKiB ? Math.round(params.memoryKiB / 1024) : '?';
+    return `v2 / ${vault.header.cipher} / ${vault.header.kdf} ${memoryMiB} MiB`;
+  }
+  if (vault.version === 1) {
+    return `legacy v1 / ${vault.kdf || 'PBKDF2-SHA256'}`;
+  }
+  return 'unknown vault format';
+}
+
+async function withButtonLock(button, status, task, onError) {
+  if (button.disabled) return;
+  button.disabled = true;
+  setStatus(status);
+  try {
+    await task();
+  } catch (error) {
+    onError(error);
+  } finally {
+    button.disabled = false;
+  }
 }

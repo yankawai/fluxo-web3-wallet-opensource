@@ -107,6 +107,11 @@ button:hover {
   background: var(--primary-hover);
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 button.secondary {
   border: 1px solid var(--line);
   background: #ffffff;
