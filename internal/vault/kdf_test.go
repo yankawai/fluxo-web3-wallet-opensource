@@ -102,8 +102,14 @@ func testArgon2idParams() Argon2idParams {
 }
 
 func validateTestParams(params Argon2idParams) error {
-	if params.SaltBytes != SaltSize || params.KeyBytes != KeySize {
+	expected := testArgon2idParams()
+	if params.KDFSizeMismatch(expected) {
 		return ErrInvalidVault
+	}
+	if params.MemoryKiB < expected.MemoryKiB ||
+		params.Passes < expected.Passes ||
+		params.Parallelism != expected.Parallelism {
+		return ErrWeakKDF
 	}
 	return nil
 }

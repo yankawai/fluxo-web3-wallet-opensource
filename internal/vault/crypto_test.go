@@ -46,6 +46,39 @@ func TestEncryptUsesUniqueNonce(t *testing.T) {
 	}
 }
 
+func TestDecryptRejectsMetadataTampering(t *testing.T) {
+	v := testEncryptVault(t, testPrivateKey, testPassword, testAddress)
+	v.Header.Address = "0x1111111111111111111111111111111111111111"
+	_, err := decryptV2(v, testPassword, validateTestParams)
+	if !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("decryptV2() error = %v, want %v", err, ErrInvalidPassword)
+	}
+}
+
+func TestDecryptRejectsCiphertextTampering(t *testing.T) {
+	v := testEncryptVault(t, testPrivateKey, testPassword, testAddress)
+	raw, err := base64.StdEncoding.DecodeString(v.Ciphertext)
+	if err != nil {
+		t.Fatalf("DecodeString() error = %v", err)
+	}
+	raw[len(raw)-1] ^= 0x01
+	v.Ciphertext = base64.StdEncoding.EncodeToString(raw)
+
+	_, err = decryptV2(v, testPassword, validateTestParams)
+	if !errors.Is(err, ErrInvalidPassword) {
+		t.Fatalf("decryptV2() error = %v, want %v", err, ErrInvalidPassword)
+	}
+}
+
+func TestDecryptRejectsKDFDowngrade(t *testing.T) {
+	v := testEncryptVault(t, testPrivateKey, testPassword, testAddress)
+	v.Header.KDFParams.MemoryKiB = 1
+	_, err := decryptV2(v, testPassword, validateTestParams)
+	if !errors.Is(err, ErrWeakKDF) {
+		t.Fatalf("decryptV2() error = %v, want %v", err, ErrWeakKDF)
+	}
+}
+
 func testEncryptVault(t *testing.T, privateKey string, password string, address string) Vault {
 	t.Helper()
 	v, err := encryptV2(
