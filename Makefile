@@ -18,6 +18,7 @@ manifest:
 wasm:
 	GOOS=js GOARCH=wasm go build -trimpath -o extension/wallet.wasm ./cmd/walletwasm
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" extension/wasm_exec.js
+	chmod 644 extension/wallet.wasm extension/wasm_exec.js
 
 extension: fmt test vet js-check manifest wasm
 
