@@ -19,6 +19,5 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: test -z "$(gofmt -l ./cmd ./internal)"
-      - run: go test ./...
-      - run: go vet ./...
-      - run: GOOS=js GOARCH=wasm go build -trimpath -o extension/wallet.wasm ./cmd/walletwasm
+      - run: make extension
+      - run: make package
