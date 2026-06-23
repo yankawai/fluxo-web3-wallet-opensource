@@ -12,6 +12,7 @@ This repository intentionally does not ship an application UI. It provides the w
 - A hardened encrypted vault implementation using Argon2id and XChaCha20-Poly1305.
 - A session-based runtime that signs messages without exposing private keys.
 - A built-in EVM network registry for Ethereum, Sepolia, Polygon, Arbitrum, Optimism, and Base.
+- A secure-element command contract and software emulator for future hardware ports.
 - A buildable WASM adapter for browser, desktop, mobile, or embedded clients.
 
 ## What This Repo Is Not
@@ -30,6 +31,7 @@ Use Fluxo as wallet infrastructure and build the UX, storage adapter, RPC policy
 - `internal/walletcore`: BIP39 seed phrase generation/validation, BIP44 Ethereum derivation, address derivation, and EIP-191 message signing.
 - `internal/vault`: vault models, Argon2id key derivation, XChaCha20-Poly1305 encryption, metadata authentication, legacy migration, and session locking.
 - `internal/walletruntime`: application boundary for creating/importing/unlocking vaults and signing only through session IDs.
+- `internal/secureelement`: firmware-facing command contract plus a software emulator for tests and hardware-port development.
 - `internal/networks`: default EVM network metadata.
 - `cmd/walletwasm`: WASM bridge exposing the same session-based wallet runtime to host applications.
 
@@ -74,6 +76,17 @@ The WASM bridge exposes these Go-owned methods under `globalThis.walletCore`:
 - `lockAll()`
 
 The API intentionally has no method that returns a private key.
+
+## Secure Element Track
+
+Fluxo now includes a hardware-wallet direction without pretending that software equals a secure chip:
+
+- `internal/secureelement/protocol.go` defines the command contract for generate, provision, derive, sign, attest, and lock operations.
+- `internal/secureelement/software.go` provides a software emulator for test vectors and host integration.
+- `firmware/secure-element/README.md` documents the requirements for a real secure-element firmware port.
+- `docs/security-audit-checklist.md` tracks the review gates required before custody-grade positioning.
+
+The software emulator is not a custody boundary. A real Ledger/Tangem-class device requires a concrete secure element, vendor SDK, secure boot, anti-rollback, per-device attestation keys, manufacturing provisioning, side-channel review, and independent audits.
 
 ## Integration Notes
 
