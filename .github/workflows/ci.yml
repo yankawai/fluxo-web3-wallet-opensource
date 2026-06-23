@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: test -z "$(gofmt -l ./cmd ./internal)"
+      - run: go test ./...
+      - run: go vet ./...
+      - run: GOOS=js GOARCH=wasm go build -trimpath -o extension/wallet.wasm ./cmd/walletwasm

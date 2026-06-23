@@ -1,0 +1,22 @@
+.DS_Store
+
+# Go
+/bin/
+*.test
+*.out
+coverage.*
+
+# Local wallet data
+/.wallet/
+/keystore/
+/go-web3-wallet-extension.zip
+
+# Secrets and local config
+.env
+*.key
+*.pass
+*.secret
+
+# Editors
+.idea/
+.vscode/
