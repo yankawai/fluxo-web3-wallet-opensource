@@ -8,10 +8,13 @@ import (
 )
 
 const (
-	FormatVersion = 2
+	LegacyV2FormatVersion = 2
+	FormatVersion         = 3
 
 	CipherXChaCha20Poly1305 = "XCHACHA20-POLY1305"
 	KDFArgon2id             = "ARGON2ID"
+	VaultKindHDMnemonic     = "hd-mnemonic"
+	VaultKindPrivateKey     = "private-key"
 
 	SaltSize  = 32
 	NonceSize = 24
@@ -39,6 +42,7 @@ type Header struct {
 	Cipher    string         `json:"cipher"`
 	KDF       string         `json:"kdf"`
 	KDFParams Argon2idParams `json:"kdfParams"`
+	Kind      string         `json:"kind"`
 	Address   string         `json:"address"`
 	CreatedAt string         `json:"createdAt"`
 }
@@ -51,13 +55,18 @@ type Vault struct {
 }
 
 type Plaintext struct {
-	PrivateKey string `json:"privateKey"`
+	PrivateKey         string `json:"privateKey,omitempty"`
+	Mnemonic           string `json:"mnemonic,omitempty"`
+	ActiveAccountIndex uint32 `json:"activeAccountIndex,omitempty"`
 }
 
 type UnlockResult struct {
-	PrivateKey    string
-	Address       string
-	MigratedVault *Vault
+	PrivateKey         string
+	Mnemonic           string
+	ActiveAccountIndex uint32
+	Address            string
+	Kind               string
+	MigratedVault      *Vault
 }
 
 func DefaultArgon2idParams() Argon2idParams {
@@ -75,8 +84,14 @@ func (v Vault) Validate() error {
 }
 
 func validateVault(v Vault, validateKDF func(Argon2idParams) error) error {
-	if v.Header.Version != FormatVersion {
+	if v.Header.Version != FormatVersion && v.Header.Version != LegacyV2FormatVersion {
 		return fmt.Errorf("%w: version %d", ErrInvalidVault, v.Header.Version)
+	}
+	if v.Header.Version == FormatVersion && v.Header.Kind != VaultKindHDMnemonic {
+		return fmt.Errorf("%w: vault kind %q", ErrInvalidVault, v.Header.Kind)
+	}
+	if v.Header.Version == LegacyV2FormatVersion && v.Header.Kind != "" && v.Header.Kind != VaultKindPrivateKey {
+		return fmt.Errorf("%w: vault kind %q", ErrInvalidVault, v.Header.Kind)
 	}
 	if v.Header.Cipher != CipherXChaCha20Poly1305 {
 		return fmt.Errorf("%w: cipher %q", ErrInvalidVault, v.Header.Cipher)

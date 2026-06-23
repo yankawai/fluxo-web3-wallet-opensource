@@ -31,11 +31,11 @@ func TestUnlockJSONMigratesV1Vault(t *testing.T) {
 	if result.MigratedVault == nil {
 		t.Fatalf("MigratedVault is nil")
 	}
-	if result.MigratedVault.Header.Version != FormatVersion {
-		t.Fatalf("migrated version = %d, want %d", result.MigratedVault.Header.Version, FormatVersion)
+	if result.MigratedVault.Header.Version != LegacyV2FormatVersion {
+		t.Fatalf("migrated version = %d, want %d", result.MigratedVault.Header.Version, LegacyV2FormatVersion)
 	}
 
-	migrated, err := decryptV2(*result.MigratedVault, testPassword, validateTestParams)
+	migrated, err := decryptVault(*result.MigratedVault, testPassword, validateTestParams)
 	if err != nil {
 		t.Fatalf("decrypt migrated vault: %v", err)
 	}

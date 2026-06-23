@@ -50,9 +50,15 @@ func unlockJSONWithPolicy(
 	case FormatVersion:
 		var v Vault
 		if err := json.Unmarshal([]byte(rawVault), &v); err != nil {
+			return UnlockResult{}, fmt.Errorf("%w: invalid v3 vault json", ErrInvalidVault)
+		}
+		return decryptVault(v, password, validateKDF)
+	case LegacyV2FormatVersion:
+		var v Vault
+		if err := json.Unmarshal([]byte(rawVault), &v); err != nil {
 			return UnlockResult{}, fmt.Errorf("%w: invalid v2 vault json", ErrInvalidVault)
 		}
-		return decryptV2(v, password, validateKDF)
+		return decryptVault(v, password, validateKDF)
 	case legacyVersion:
 		var v legacyVault
 		if err := json.Unmarshal([]byte(rawVault), &v); err != nil {
@@ -62,7 +68,7 @@ func unlockJSONWithPolicy(
 		if err != nil {
 			return UnlockResult{}, err
 		}
-		migrated, err := encryptV2(result.PrivateKey, password, result.Address, params, validateKDF, now)
+		migrated, err := encryptPrivateKeyV2(result.PrivateKey, password, result.Address, params, validateKDF, now)
 		if err != nil {
 			return UnlockResult{}, err
 		}
