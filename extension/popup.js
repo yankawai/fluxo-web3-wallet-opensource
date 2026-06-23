@@ -1,8 +1,7 @@
 const storageKey = 'goWeb3WalletVault';
-const kdfIterations = 250000;
 
-let privateKey = null;
 let address = null;
+let sessionId = null;
 
 const els = {
   status: document.getElementById('status'),
@@ -35,7 +34,7 @@ async function boot() {
     renderSetup();
     return;
   }
-  renderLocked(vault.address);
+  renderLocked(getVaultAddress(vault));
 }
 
 async function loadWasm() {
@@ -48,13 +47,13 @@ async function loadWasm() {
 els.createWallet.addEventListener('click', async () => {
   try {
     const password = requirePassword(els.setupPassword.value);
-    const wallet = callCore('generateWallet');
-    const vault = await encryptPrivateKey(wallet.privateKey, password, wallet.address);
-    await chrome.storage.local.set({ [storageKey]: vault });
-    privateKey = wallet.privateKey;
-    address = wallet.address;
-    renderWallet(wallet.address);
+    const response = callCore('createVault', password);
+    await storeVault(response.vault);
+    sessionId = response.sessionId;
+    address = response.address;
+    renderWallet(response.address);
   } catch (error) {
+    lockAllSessions();
     setStatus(error.message || 'create failed');
   }
 });
@@ -64,9 +63,13 @@ els.unlockWallet.addEventListener('click', async () => {
     const password = requirePassword(els.unlockPassword.value);
     const vault = await getVault();
     if (!vault) throw new Error('vault missing');
-    privateKey = await decryptPrivateKey(vault, password);
-    address = callCore('addressFromPrivateKey', privateKey).address;
-    renderWallet(address);
+    const response = callCore('unlockVault', JSON.stringify(vault), password);
+    if (response.migratedVault) {
+      await storeVault(response.migratedVault);
+    }
+    sessionId = response.sessionId;
+    address = response.address;
+    renderWallet(response.address);
   } catch (error) {
     lockMemory();
     setStatus('unlock failed');
@@ -75,10 +78,10 @@ els.unlockWallet.addEventListener('click', async () => {
 
 els.signMessage.addEventListener('click', async () => {
   try {
-    if (!privateKey) throw new Error('wallet locked');
+    if (!sessionId) throw new Error('wallet locked');
     const message = els.message.value.trim();
     if (!message) throw new Error('message required');
-    const signed = callCore('signMessage', privateKey, message);
+    const signed = callCore('signMessage', sessionId, message);
     els.signature.value = signed.signature;
     setStatus('signed');
   } catch (error) {
@@ -97,15 +100,21 @@ els.copySignature.addEventListener('click', async () => {
 });
 
 els.lockWallet.addEventListener('click', () => {
+  lockActiveSession();
   lockMemory();
   renderLocked(address);
 });
 
 els.resetWallet.addEventListener('click', async () => {
   if (!confirm('Delete the encrypted local vault from this browser profile?')) return;
+  lockAllSessions();
   await chrome.storage.local.remove(storageKey);
   lockMemory();
   renderSetup();
+});
+
+window.addEventListener('pagehide', () => {
+  lockActiveSession();
 });
 
 function callCore(method, ...args) {
@@ -130,54 +139,8 @@ async function getVault() {
   return result[storageKey] || null;
 }
 
-async function encryptPrivateKey(key, password, walletAddress) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const cryptoKey = await deriveKey(password, salt);
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    new TextEncoder().encode(key)
-  );
-  return {
-    version: 1,
-    address: walletAddress,
-    kdf: 'PBKDF2-SHA256',
-    iterations: kdfIterations,
-    salt: toBase64(salt),
-    iv: toBase64(iv),
-    ciphertext: toBase64(new Uint8Array(ciphertext))
-  };
-}
-
-async function decryptPrivateKey(vault, password) {
-  const salt = fromBase64(vault.salt);
-  const iv = fromBase64(vault.iv);
-  const ciphertext = fromBase64(vault.ciphertext);
-  const cryptoKey = await deriveKey(password, salt);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    ciphertext
-  );
-  return new TextDecoder().decode(plaintext);
-}
-
-async function deriveKey(password, salt) {
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: kdfIterations, hash: 'SHA-256' },
-    baseKey,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+async function storeVault(vault) {
+  await chrome.storage.local.set({ [storageKey]: vault });
 }
 
 function requirePassword(password) {
@@ -188,7 +151,7 @@ function requirePassword(password) {
 }
 
 function lockMemory() {
-  privateKey = null;
+  sessionId = null;
   els.signature.value = '';
 }
 
@@ -223,19 +186,24 @@ function setStatus(value) {
   els.status.textContent = value;
 }
 
-function toBase64(bytes) {
-  let binary = '';
-  bytes.forEach(byte => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
+function lockActiveSession() {
+  if (!sessionId || !globalThis.walletCore) return;
+  try {
+    callCore('lock', sessionId);
+  } catch (_) {
+    // Lock is best effort during popup teardown.
+  }
 }
 
-function fromBase64(value) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+function lockAllSessions() {
+  if (!globalThis.walletCore) return;
+  try {
+    callCore('lockAll');
+  } catch (_) {
+    // Lock is best effort after failed setup or reset.
   }
-  return bytes;
+}
+
+function getVaultAddress(vault) {
+  return vault?.header?.address || vault?.address || null;
 }
