@@ -17,9 +17,12 @@ const (
 var ErrSessionLocked = errors.New("wallet session is locked")
 
 type SessionSecret struct {
-	Address    string
-	PrivateKey string
-	ExpiresAt  time.Time
+	Address            string
+	PrivateKey         string
+	Mnemonic           string
+	ActiveAccountIndex uint32
+	Kind               string
+	ExpiresAt          time.Time
 }
 
 type SessionStore struct {
@@ -48,11 +51,25 @@ func newSessionStore(ttl time.Duration, now func() time.Time) *SessionStore {
 }
 
 func (s *SessionStore) Create(address string, privateKey string) (string, error) {
-	if !isEthereumAddressShape(address) {
+	return s.CreateSecret(SessionSecret{
+		Address:    address,
+		PrivateKey: privateKey,
+		Kind:       VaultKindPrivateKey,
+	})
+}
+
+func (s *SessionStore) CreateSecret(secret SessionSecret) (string, error) {
+	if !isEthereumAddressShape(secret.Address) {
 		return "", fmt.Errorf("%w: invalid session address", ErrInvalidVault)
 	}
-	if strings.TrimSpace(privateKey) == "" {
+	if secret.Kind == "" {
+		secret.Kind = VaultKindPrivateKey
+	}
+	if secret.Kind == VaultKindPrivateKey && strings.TrimSpace(secret.PrivateKey) == "" {
 		return "", fmt.Errorf("%w: missing session key", ErrInvalidVault)
+	}
+	if secret.Kind == VaultKindHDMnemonic && strings.TrimSpace(secret.Mnemonic) == "" {
+		return "", fmt.Errorf("%w: missing session mnemonic", ErrInvalidVault)
 	}
 
 	sessionID, err := newSessionID()
@@ -62,11 +79,8 @@ func (s *SessionStore) Create(address string, privateKey string) (string, error)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions[sessionID] = SessionSecret{
-		Address:    address,
-		PrivateKey: privateKey,
-		ExpiresAt:  s.now().Add(s.ttl),
-	}
+	secret.ExpiresAt = s.now().Add(s.ttl)
+	s.sessions[sessionID] = secret
 	return sessionID, nil
 }
 

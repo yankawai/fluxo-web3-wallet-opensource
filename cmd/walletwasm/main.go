@@ -14,6 +14,7 @@ var runtime = walletruntime.NewService()
 func main() {
 	api := map[string]any{
 		"createVault": js.FuncOf(createVault),
+		"importVault": js.FuncOf(importVault),
 		"unlockVault": js.FuncOf(unlockVault),
 		"signMessage": js.FuncOf(signMessage),
 		"lock":        js.FuncOf(lock),
@@ -28,6 +29,14 @@ func createVault(_ js.Value, args []js.Value) any {
 		return jsonError("createVault requires password")
 	}
 	response, err := runtime.CreateVault(args[0].String())
+	return jsonResult(response, err)
+}
+
+func importVault(_ js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return jsonError("importVault requires password and mnemonic")
+	}
+	response, err := runtime.ImportVault(args[0].String(), args[1].String())
 	return jsonResult(response, err)
 }
 
