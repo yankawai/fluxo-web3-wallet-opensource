@@ -88,13 +88,15 @@ func TestServiceCreateVaultDoesNotReturnPrivateKey(t *testing.T) {
 }
 
 func TestServiceUnlockVaultDoesNotReturnPrivateKey(t *testing.T) {
+	migratedVault := &vault.Vault{Header: vault.Header{Version: vault.FormatVersion, Address: testAddress}}
 	service := newServiceWithVault(
 		time.Minute,
 		nil,
-		func(_ vault.Vault, _ string) (vault.UnlockResult, error) {
+		func(_ string, _ string) (vault.UnlockResult, error) {
 			return vault.UnlockResult{
-				PrivateKey: testPrivateKey,
-				Address:    testAddress,
+				PrivateKey:    testPrivateKey,
+				Address:       testAddress,
+				MigratedVault: migratedVault,
 			}, nil
 		},
 	)
@@ -110,5 +112,8 @@ func TestServiceUnlockVaultDoesNotReturnPrivateKey(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "privateKey") || strings.Contains(string(raw), testPrivateKey) {
 		t.Fatalf("response leaked private key material: %s", string(raw))
+	}
+	if response.MigratedVault != migratedVault {
+		t.Fatalf("migrated vault was not returned")
 	}
 }

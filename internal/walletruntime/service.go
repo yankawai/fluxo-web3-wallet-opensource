@@ -1,7 +1,6 @@
 package walletruntime
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,7 +15,7 @@ var ErrAddressMismatch = errors.New("private key does not match vault address")
 type Service struct {
 	sessions     *vault.SessionStore
 	encryptVault func(privateKey string, password string, address string) (vault.Vault, error)
-	decryptVault func(vault.Vault, string) (vault.UnlockResult, error)
+	unlockVault  func(rawVault string, password string) (vault.UnlockResult, error)
 }
 
 type SessionResponse struct {
@@ -37,22 +36,22 @@ type UnlockVaultResponse struct {
 }
 
 func NewService() *Service {
-	return newServiceWithVault(vault.DefaultSessionTTL, vault.Encrypt, vault.Decrypt)
+	return newServiceWithVault(vault.DefaultSessionTTL, vault.Encrypt, vault.UnlockJSON)
 }
 
 func newServiceWithTTL(ttl time.Duration) *Service {
-	return newServiceWithVault(ttl, vault.Encrypt, vault.Decrypt)
+	return newServiceWithVault(ttl, vault.Encrypt, vault.UnlockJSON)
 }
 
 func newServiceWithVault(
 	ttl time.Duration,
 	encryptVault func(privateKey string, password string, address string) (vault.Vault, error),
-	decryptVault func(vault.Vault, string) (vault.UnlockResult, error),
+	unlockVault func(rawVault string, password string) (vault.UnlockResult, error),
 ) *Service {
 	return &Service{
 		sessions:     vault.NewSessionStore(ttl),
 		encryptVault: encryptVault,
-		decryptVault: decryptVault,
+		unlockVault:  unlockVault,
 	}
 }
 
@@ -77,11 +76,7 @@ func (s *Service) CreateVault(password string) (CreateVaultResponse, error) {
 }
 
 func (s *Service) UnlockVault(rawVault string, password string) (UnlockVaultResponse, error) {
-	var encryptedVault vault.Vault
-	if err := json.Unmarshal([]byte(rawVault), &encryptedVault); err != nil {
-		return UnlockVaultResponse{}, fmt.Errorf("%w: invalid vault json", vault.ErrInvalidVault)
-	}
-	result, err := s.decryptVault(encryptedVault, password)
+	result, err := s.unlockVault(rawVault, password)
 	if err != nil {
 		return UnlockVaultResponse{}, err
 	}
