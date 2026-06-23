@@ -30,6 +30,7 @@ The host talks to the secure element through a small command surface:
 | `OpcodeLock` | Lock a slot/session | never |
 
 The Go contract is in `internal/secureelement/protocol.go`.
+Bounded host/device frame encoding is in `internal/secureelement/codec.go`.
 
 ## Firmware Requirements
 
