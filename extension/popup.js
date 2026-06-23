@@ -1,25 +1,50 @@
 const storageKey = 'fluxoWeb3WalletVault';
 const legacyStorageKey = 'goWeb3WalletVault';
+const settingsKey = 'fluxoWalletSettings';
 const autoLockMs = 5 * 60 * 1000;
 
 let address = null;
 let sessionId = null;
+let account = null;
+let accounts = [];
+let networks = [];
+let activeChainId = 1;
 let autoLockTimer = null;
 
 const els = {
   status: document.getElementById('status'),
   setupView: document.getElementById('setupView'),
+  backupView: document.getElementById('backupView'),
   lockedView: document.getElementById('lockedView'),
   walletView: document.getElementById('walletView'),
+  createMode: document.getElementById('createMode'),
+  importMode: document.getElementById('importMode'),
+  createPanel: document.getElementById('createPanel'),
+  importPanel: document.getElementById('importPanel'),
   setupPassword: document.getElementById('setupPassword'),
+  setupPasswordConfirm: document.getElementById('setupPasswordConfirm'),
+  importMnemonic: document.getElementById('importMnemonic'),
+  importPassword: document.getElementById('importPassword'),
+  createWallet: document.getElementById('createWallet'),
+  importWallet: document.getElementById('importWallet'),
+  seedGrid: document.getElementById('seedGrid'),
+  backupConfirmed: document.getElementById('backupConfirmed'),
+  finishBackup: document.getElementById('finishBackup'),
   unlockPassword: document.getElementById('unlockPassword'),
   lockedAddress: document.getElementById('lockedAddress'),
   vaultMeta: document.getElementById('vaultMeta'),
-  walletAddress: document.getElementById('walletAddress'),
+  unlockWallet: document.getElementById('unlockWallet'),
+  accountName: document.getElementById('accountName'),
+  walletAddressShort: document.getElementById('walletAddressShort'),
+  networkSelect: document.getElementById('networkSelect'),
+  balanceValue: document.getElementById('balanceValue'),
+  balanceSymbol: document.getElementById('balanceSymbol'),
+  refreshBalance: document.getElementById('refreshBalance'),
+  openExplorer: document.getElementById('openExplorer'),
+  accountList: document.getElementById('accountList'),
+  derivationPath: document.getElementById('derivationPath'),
   message: document.getElementById('message'),
   signature: document.getElementById('signature'),
-  createWallet: document.getElementById('createWallet'),
-  unlockWallet: document.getElementById('unlockWallet'),
   signMessage: document.getElementById('signMessage'),
   copyAddress: document.getElementById('copyAddress'),
   copySignature: document.getElementById('copySignature'),
@@ -33,9 +58,10 @@ boot().catch(error => {
 
 async function boot() {
   await loadWasm();
-  await hardenStorageAccess().catch(() => {
-    setStatus('storage hardening unavailable');
-  });
+  await hardenStorageAccess().catch(() => setStatus('storage limited'));
+  const settings = await getSettings();
+  activeChainId = settings.activeChainId || activeChainId;
+
   let vault = null;
   try {
     vault = await getVault();
@@ -59,32 +85,58 @@ async function loadWasm() {
   await waitForWalletCore();
 }
 
-els.createWallet.addEventListener('click', async () => {
+els.createMode.addEventListener('click', () => setSetupMode('create'));
+els.importMode.addEventListener('click', () => setSetupMode('import'));
+
+els.createWallet.addEventListener('click', () => {
   withButtonLock(els.createWallet, 'creating', async () => {
-    const password = requirePassword(els.setupPassword.value);
+    const password = requirePasswordPair(els.setupPassword.value, els.setupPasswordConfirm.value);
     const response = callCore('createVault', password);
     await storeVault(response.vault);
-    sessionId = response.sessionId;
-    address = response.address;
-    renderWallet(response.address);
+    await hydrateSession(response);
+    renderBackup(response.mnemonic);
   }, error => {
     lockAllSessions();
     setStatus(error.message || 'create failed');
   });
 });
 
-els.unlockWallet.addEventListener('click', async () => {
+els.importWallet.addEventListener('click', () => {
+  withButtonLock(els.importWallet, 'importing', async () => {
+    const password = requirePassword(els.importPassword.value);
+    const mnemonic = normalizeMnemonic(els.importMnemonic.value);
+    if (mnemonic.split(' ').length < 12) throw new Error('seed phrase required');
+    const response = callCore('importVault', password, mnemonic);
+    await storeVault(response.vault);
+    await hydrateSession(response);
+    renderWallet();
+    refreshBalance();
+  }, error => {
+    lockAllSessions();
+    setStatus(error.message || 'import failed');
+  });
+});
+
+els.backupConfirmed.addEventListener('change', () => {
+  els.finishBackup.disabled = !els.backupConfirmed.checked;
+});
+
+els.finishBackup.addEventListener('click', () => {
+  els.seedGrid.textContent = '';
+  renderWallet();
+  refreshBalance();
+});
+
+els.unlockWallet.addEventListener('click', () => {
   withButtonLock(els.unlockWallet, 'unlocking', async () => {
     const password = requirePassword(els.unlockPassword.value);
     const vault = await getVault();
     if (!vault) throw new Error('vault missing');
     const response = callCore('unlockVault', JSON.stringify(vault), password);
-    if (response.migratedVault) {
-      await storeVault(response.migratedVault);
-    }
-    sessionId = response.sessionId;
-    address = response.address;
-    renderWallet(response.address);
+    if (response.migratedVault) await storeVault(response.migratedVault);
+    await hydrateSession(response);
+    renderWallet();
+    refreshBalance();
   }, () => {
     lockAllSessions();
     lockMemory();
@@ -92,7 +144,33 @@ els.unlockWallet.addEventListener('click', async () => {
   });
 });
 
-els.signMessage.addEventListener('click', async () => {
+els.networkSelect.addEventListener('change', async () => {
+  activeChainId = Number(els.networkSelect.value);
+  await storeSettings({ activeChainId });
+  renderNetwork();
+  refreshBalance();
+});
+
+els.refreshBalance.addEventListener('click', () => refreshBalance());
+
+els.openExplorer.addEventListener('click', () => {
+  const network = getActiveNetwork();
+  if (!network || !address) return;
+  const url = `${network.explorerUrl}/address/${address}`;
+  if (chrome.tabs?.create) {
+    chrome.tabs.create({ url });
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+});
+
+els.copyAddress.addEventListener('click', async () => {
+  armAutoLock();
+  if (address) await navigator.clipboard.writeText(address);
+  setStatus('address copied');
+});
+
+els.signMessage.addEventListener('click', () => {
   withButtonLock(els.signMessage, 'signing', async () => {
     if (!sessionId) throw new Error('wallet locked');
     const message = els.message.value.trim();
@@ -100,15 +178,7 @@ els.signMessage.addEventListener('click', async () => {
     const signed = callCore('signMessage', sessionId, message);
     els.signature.value = signed.signature;
     setStatus('signed');
-  }, error => {
-    setStatus(error.message || 'sign failed');
-  });
-});
-
-els.copyAddress.addEventListener('click', async () => {
-  armAutoLock();
-  if (address) await navigator.clipboard.writeText(address);
-  setStatus('address copied');
+  }, error => setStatus(error.message || 'sign failed'));
 });
 
 els.copySignature.addEventListener('click', async () => {
@@ -126,18 +196,13 @@ els.lockWallet.addEventListener('click', () => {
 els.resetWallet.addEventListener('click', async () => {
   if (!confirm('Delete the encrypted local vault from this browser profile?')) return;
   lockAllSessions();
-  await chrome.storage.local.remove(storageKey);
+  await chrome.storage.local.remove([storageKey, legacyStorageKey, settingsKey]);
   lockMemory();
   renderSetup();
 });
 
-window.addEventListener('pagehide', () => {
-  lockActiveSession();
-});
-
-window.addEventListener('beforeunload', () => {
-  lockActiveSession();
-});
+window.addEventListener('pagehide', () => lockActiveSession());
+window.addEventListener('beforeunload', () => lockActiveSession());
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
@@ -155,9 +220,7 @@ document.addEventListener('visibilitychange', () => {
 function callCore(method, ...args) {
   const raw = globalThis.walletCore[method](...args);
   const parsed = JSON.parse(raw);
-  if (!parsed.ok) {
-    throw new Error(parsed.error || 'wallet core error');
-  }
+  if (!parsed.ok) throw new Error(parsed.error || 'wallet core error');
   return parsed.data;
 }
 
@@ -167,6 +230,19 @@ async function waitForWalletCore() {
     await new Promise(resolve => setTimeout(resolve, 20));
   }
   throw new Error('wallet core unavailable');
+}
+
+async function hydrateSession(response) {
+  sessionId = response.sessionId;
+  address = response.address;
+  account = response.account;
+  accounts = response.accounts || (account ? [account] : []);
+  networks = response.networks || networks;
+  if (!networks.some(network => network.chainId === activeChainId)) {
+    activeChainId = response.activeChainId || networks[0]?.chainId || 1;
+    await storeSettings({ activeChainId });
+  }
+  armAutoLock();
 }
 
 async function getVault() {
@@ -185,45 +261,173 @@ async function storeVault(vault) {
   await chrome.storage.local.set({ [storageKey]: normalizeStoredVault(vault) });
 }
 
-function requirePassword(password) {
-  if (!password || password.length < 12) {
-    throw new Error('password must be 12+ characters');
-  }
-  return password;
+async function getSettings() {
+  const result = await chrome.storage.local.get(settingsKey);
+  return result[settingsKey] || {};
 }
 
-function lockMemory() {
-  sessionId = null;
-  clearAutoLock();
-  els.signature.value = '';
+async function storeSettings(partial) {
+  const current = await getSettings();
+  await chrome.storage.local.set({ [settingsKey]: { ...current, ...partial } });
 }
 
 function renderSetup() {
-  setStatus('new vault');
+  lockMemory();
+  setSetupMode('create');
+  setStatus('new wallet');
   showOnly(els.setupView);
+}
+
+function setSetupMode(mode) {
+  const importing = mode === 'import';
+  els.createMode.classList.toggle('active', !importing);
+  els.importMode.classList.toggle('active', importing);
+  els.createPanel.classList.toggle('hidden', importing);
+  els.importPanel.classList.toggle('hidden', !importing);
+}
+
+function renderBackup(mnemonic) {
+  els.backupConfirmed.checked = false;
+  els.finishBackup.disabled = true;
+  els.seedGrid.textContent = '';
+  mnemonic.split(' ').forEach((word, index) => {
+    const item = document.createElement('div');
+    item.className = 'seed-word';
+    item.innerHTML = `<span>${index + 1}</span><strong>${word}</strong>`;
+    els.seedGrid.appendChild(item);
+  });
+  setStatus('backup');
+  showOnly(els.backupView);
 }
 
 function renderLocked(walletAddress, vault = null) {
   address = walletAddress || null;
-  els.lockedAddress.textContent = walletAddress || '-';
+  els.lockedAddress.textContent = shortAddress(walletAddress) || '-';
   els.vaultMeta.textContent = formatVaultMeta(vault);
   els.unlockPassword.value = '';
   setStatus('locked');
   showOnly(els.lockedView);
 }
 
-function renderWallet(walletAddress) {
-  address = walletAddress;
-  els.walletAddress.textContent = walletAddress;
+function renderWallet() {
+  if (!address || !sessionId) return renderSetup();
+  const network = getActiveNetwork();
+  els.accountName.textContent = account?.path === 'imported' ? 'Imported account' : `Account ${(account?.index || 0) + 1}`;
+  els.walletAddressShort.textContent = shortAddress(address);
+  els.derivationPath.textContent = account?.path || 'imported';
+  renderNetworkOptions();
+  renderNetwork();
+  renderAccounts();
   els.setupPassword.value = '';
+  els.setupPasswordConfirm.value = '';
+  els.importMnemonic.value = '';
+  els.importPassword.value = '';
   els.unlockPassword.value = '';
+  els.balanceValue.textContent = '-.----';
+  els.balanceSymbol.textContent = network?.symbol || 'ETH';
+  els.signature.value = '';
   setStatus('unlocked');
-  armAutoLock();
   showOnly(els.walletView);
+  armAutoLock();
+}
+
+function renderNetworkOptions() {
+  els.networkSelect.textContent = '';
+  networks.forEach(network => {
+    const option = document.createElement('option');
+    option.value = String(network.chainId);
+    option.textContent = network.name;
+    option.selected = network.chainId === activeChainId;
+    els.networkSelect.appendChild(option);
+  });
+}
+
+function renderNetwork() {
+  const network = getActiveNetwork();
+  if (!network) return;
+  els.balanceSymbol.textContent = network.symbol;
+  els.networkSelect.value = String(network.chainId);
+}
+
+function renderAccounts() {
+  els.accountList.textContent = '';
+  accounts.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'account-row active';
+    row.innerHTML = `
+      <span>${item.path === 'imported' ? 'Imported' : `Account ${item.index + 1}`}</span>
+      <code>${shortAddress(item.address)}</code>
+    `;
+    els.accountList.appendChild(row);
+  });
+}
+
+async function refreshBalance() {
+  if (!address || !sessionId) return;
+  const network = getActiveNetwork();
+  if (!network) return;
+  setStatus('syncing');
+  els.balanceValue.textContent = 'loading';
+  try {
+    const balanceHex = await rpcCall(network.rpcUrl, 'eth_getBalance', [address, 'latest']);
+    const value = formatNativeBalance(balanceHex);
+    els.balanceValue.textContent = value;
+    els.balanceSymbol.textContent = network.symbol;
+    setStatus('online');
+  } catch (_) {
+    els.balanceValue.textContent = 'unavailable';
+    setStatus('rpc offline');
+  }
+}
+
+async function rpcCall(rpcUrl, method, params) {
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params })
+  });
+  if (!response.ok) throw new Error(`rpc status ${response.status}`);
+  const payload = await response.json();
+  if (payload.error) throw new Error(payload.error.message || 'rpc error');
+  return payload.result;
+}
+
+function formatNativeBalance(hexValue) {
+  const wei = BigInt(hexValue || '0x0');
+  const whole = wei / 10n ** 18n;
+  const fraction = (wei % 10n ** 18n).toString().padStart(18, '0').slice(0, 4);
+  return `${whole}.${fraction}`;
+}
+
+function getActiveNetwork() {
+  return networks.find(network => network.chainId === activeChainId) || networks[0] || null;
+}
+
+function requirePassword(password) {
+  if (!password || password.length < 12) throw new Error('password must be 12+ characters');
+  return password;
+}
+
+function requirePasswordPair(password, confirmation) {
+  requirePassword(password);
+  if (password !== confirmation) throw new Error('passwords do not match');
+  return password;
+}
+
+function normalizeMnemonic(value) {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function lockMemory() {
+  sessionId = null;
+  account = null;
+  accounts = [];
+  clearAutoLock();
+  if (els.signature) els.signature.value = '';
 }
 
 function showOnly(view) {
-  [els.setupView, els.lockedView, els.walletView].forEach(item => item.classList.add('hidden'));
+  [els.setupView, els.backupView, els.lockedView, els.walletView].forEach(item => item.classList.add('hidden'));
   view.classList.remove('hidden');
 }
 
@@ -259,18 +463,14 @@ async function hardenStorageAccess() {
 }
 
 function normalizeStoredVault(vault) {
-  if (!vault || typeof vault !== 'object') {
-    throw new Error('stored vault is invalid');
-  }
-  if (vault.header?.version === 2) {
+  if (!vault || typeof vault !== 'object') throw new Error('stored vault is invalid');
+  if (vault.header?.version === 3 || vault.header?.version === 2) {
     const header = vault.header;
     requireString(header.address, 'vault address');
     requireString(header.cipher, 'vault cipher');
     requireString(header.kdf, 'vault kdf');
     requireString(header.createdAt, 'vault createdAt');
-    if (!header.kdfParams || typeof header.kdfParams !== 'object') {
-      throw new Error('vault kdf params missing');
-    }
+    if (!header.kdfParams || typeof header.kdfParams !== 'object') throw new Error('vault kdf params missing');
     requireString(vault.salt, 'vault salt');
     requireString(vault.nonce, 'vault nonce');
     requireString(vault.ciphertext, 'vault ciphertext');
@@ -287,9 +487,7 @@ function normalizeStoredVault(vault) {
 }
 
 function requireString(value, field) {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${field} is invalid`);
-  }
+  if (typeof value !== 'string' || value.trim() === '') throw new Error(`${field} is invalid`);
 }
 
 async function renderLockedFromStorage(fallbackAddress = null) {
@@ -303,14 +501,9 @@ async function renderLockedFromStorage(fallbackAddress = null) {
 
 function formatVaultMeta(vault) {
   if (!vault) return 'encrypted local vault';
-  if (vault.header?.version === 2) {
-    const params = vault.header.kdfParams || {};
-    const memoryMiB = params.memoryKiB ? Math.round(params.memoryKiB / 1024) : '?';
-    return `v2 / ${vault.header.cipher} / ${vault.header.kdf} ${memoryMiB} MiB`;
-  }
-  if (vault.version === 1) {
-    return `legacy v1 / ${vault.kdf || 'PBKDF2-SHA256'}`;
-  }
+  if (vault.header?.version === 3) return 'HD vault / seed phrase / Argon2id';
+  if (vault.header?.version === 2) return 'legacy key vault / Argon2id';
+  if (vault.version === 1) return `legacy v1 / ${vault.kdf || 'PBKDF2-SHA256'}`;
   return 'unknown vault format';
 }
 
@@ -342,4 +535,9 @@ function clearAutoLock() {
   if (!autoLockTimer) return;
   clearTimeout(autoLockTimer);
   autoLockTimer = null;
+}
+
+function shortAddress(value) {
+  if (!value) return '';
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }

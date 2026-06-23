@@ -8,62 +8,124 @@
   </head>
   <body>
     <main class="shell">
-      <header class="header">
-        <div>
-          <p class="eyebrow">fluxo wallet</p>
-          <h1>Fluxo Web3 Wallet</h1>
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">f</span>
+          <div>
+            <p class="eyebrow">Fluxo</p>
+            <h1>Wallet</h1>
+          </div>
         </div>
         <span id="status" class="status">loading</span>
       </header>
 
-      <section id="setupView" class="panel hidden">
-        <label>
-          Vault password
-          <input id="setupPassword" type="password" autocomplete="new-password" minlength="12" placeholder="12+ characters">
-        </label>
-        <button id="createWallet" type="button">Create encrypted wallet</button>
-        <p class="hint">The private key is generated and encrypted inside the Go WASM core before local storage.</p>
+      <section id="setupView" class="view hidden">
+        <div class="segmented">
+          <button id="createMode" class="segment active" type="button">Create</button>
+          <button id="importMode" class="segment" type="button">Import</button>
+        </div>
+
+        <div id="createPanel" class="panel">
+          <label>
+            Password
+            <input id="setupPassword" type="password" autocomplete="new-password" minlength="12" placeholder="12+ characters">
+          </label>
+          <label>
+            Confirm password
+            <input id="setupPasswordConfirm" type="password" autocomplete="new-password" minlength="12" placeholder="Repeat password">
+          </label>
+          <button id="createWallet" type="button">Create wallet</button>
+          <p class="hint">A 12-word seed phrase is generated inside the Go WASM core and encrypted into the local vault.</p>
+        </div>
+
+        <div id="importPanel" class="panel hidden">
+          <label>
+            Seed phrase
+            <textarea id="importMnemonic" rows="4" spellcheck="false" placeholder="12 words separated by spaces"></textarea>
+          </label>
+          <label>
+            Password
+            <input id="importPassword" type="password" autocomplete="new-password" minlength="12" placeholder="12+ characters">
+          </label>
+          <button id="importWallet" type="button">Import wallet</button>
+        </div>
       </section>
 
-      <section id="lockedView" class="panel hidden">
-        <div class="address-block">
-          <span>Address</span>
+      <section id="backupView" class="view hidden">
+        <div class="panel warning">
+          <p class="section-title">Recovery phrase</p>
+          <div id="seedGrid" class="seed-grid"></div>
+          <label class="check-row">
+            <input id="backupConfirmed" type="checkbox">
+            <span>I saved this phrase offline.</span>
+          </label>
+          <button id="finishBackup" type="button" disabled>Open wallet</button>
+        </div>
+      </section>
+
+      <section id="lockedView" class="view hidden">
+        <div class="panel lock-card">
+          <p class="section-title">Locked vault</p>
           <code id="lockedAddress">-</code>
-        </div>
-        <p id="vaultMeta" class="hint">-</p>
-        <label>
-          Vault password
-          <input id="unlockPassword" type="password" autocomplete="current-password" placeholder="Unlock locally">
-        </label>
-        <button id="unlockWallet" type="button">Unlock</button>
-      </section>
-
-      <section id="walletView" class="panel hidden">
-        <div class="address-block">
-          <span>Address</span>
-          <code id="walletAddress">-</code>
-        </div>
-        <button id="copyAddress" class="secondary" type="button">Copy address</button>
-
-        <label>
-          Message
-          <textarea id="message" rows="4" placeholder="Message to sign"></textarea>
-        </label>
-        <button id="signMessage" type="button">Sign message</button>
-
-        <label>
-          Signature
-          <textarea id="signature" rows="5" readonly></textarea>
-        </label>
-        <div class="row">
-          <button id="copySignature" class="secondary" type="button">Copy signature</button>
-          <button id="lockWallet" class="secondary" type="button">Lock</button>
+          <p id="vaultMeta" class="hint">-</p>
+          <label>
+            Password
+            <input id="unlockPassword" type="password" autocomplete="current-password" placeholder="Unlock wallet">
+          </label>
+          <button id="unlockWallet" type="button">Unlock</button>
         </div>
       </section>
 
-      <section class="danger-zone">
-        <button id="resetWallet" class="danger" type="button">Reset local vault</button>
+      <section id="walletView" class="view hidden">
+        <section class="wallet-card">
+          <div class="wallet-head">
+            <div>
+              <p id="accountName" class="eyebrow">Account 1</p>
+              <button id="copyAddress" class="address-pill" type="button">
+                <span id="walletAddressShort">-</span>
+              </button>
+            </div>
+            <select id="networkSelect" aria-label="Network"></select>
+          </div>
+
+          <div class="balance-block">
+            <p id="balanceValue" class="balance">-.----</p>
+            <span id="balanceSymbol" class="balance-symbol">ETH</span>
+          </div>
+
+          <div class="actions">
+            <button id="refreshBalance" class="icon-action" type="button">Refresh</button>
+            <button id="openExplorer" class="icon-action" type="button">Explorer</button>
+            <button id="lockWallet" class="icon-action" type="button">Lock</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-header">
+            <p class="section-title">Accounts</p>
+            <span id="derivationPath" class="hint">m/44'/60'/0'/0/0</span>
+          </div>
+          <div id="accountList" class="account-list"></div>
+        </section>
+
+        <section class="panel">
+          <details>
+            <summary>Message signing</summary>
+            <label>
+              Message
+              <textarea id="message" rows="3" placeholder="Message to sign"></textarea>
+            </label>
+            <button id="signMessage" type="button">Sign message</button>
+            <label>
+              Signature
+              <textarea id="signature" rows="4" readonly></textarea>
+            </label>
+            <button id="copySignature" class="secondary" type="button">Copy signature</button>
+          </details>
+        </section>
       </section>
+
+      <button id="resetWallet" class="reset" type="button">Reset local vault</button>
     </main>
 
     <script src="wasm_exec.js"></script>

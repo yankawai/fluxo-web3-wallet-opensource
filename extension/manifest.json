@@ -8,6 +8,7 @@
     "default_popup": "popup.html"
   },
   "permissions": ["storage"],
+  "host_permissions": ["https://*.publicnode.com/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
