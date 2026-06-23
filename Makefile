@@ -23,5 +23,5 @@ wasm:
 extension: fmt test vet js-check manifest wasm
 
 package: extension
-	rm -f go-web3-wallet-extension.zip
-	cd extension && zip -r ../go-web3-wallet-extension.zip .
+	rm -f fluxo-web3-wallet-opensource-extension.zip
+	cd extension && zip -r ../fluxo-web3-wallet-opensource-extension.zip .

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yankawai/go-web3-wallet/internal/vault"
+	"github.com/yankawai/fluxo-web3-wallet-opensource/internal/vault"
 )
 
 const (

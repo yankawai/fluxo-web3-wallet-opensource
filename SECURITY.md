@@ -2,7 +2,7 @@
 
 ## Threat Model
 
-`go-web3-wallet` is a minimal local browser extension wallet. It assumes the browser profile and device are trusted while the wallet is unlocked. It does not protect against malware, malicious browser extensions, compromised operating systems, keyloggers, screen capture, memory inspection, or browser profile theft.
+Fluxo is a minimal local browser extension wallet. It assumes the browser profile and device are trusted while the wallet is unlocked. It does not protect against malware, malicious browser extensions, compromised operating systems, keyloggers, screen capture, memory inspection, or browser profile theft.
 
 This project currently avoids high-risk wallet surfaces:
 

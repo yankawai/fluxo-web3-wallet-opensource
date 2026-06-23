@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	"github.com/yankawai/go-web3-wallet/internal/walletruntime"
+	"github.com/yankawai/fluxo-web3-wallet-opensource/internal/walletruntime"
 )
 
 var runtime = walletruntime.NewService()

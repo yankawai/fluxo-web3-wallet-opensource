@@ -1,4 +1,5 @@
-const storageKey = 'goWeb3WalletVault';
+const storageKey = 'fluxoWeb3WalletVault';
+const legacyStorageKey = 'goWeb3WalletVault';
 const autoLockMs = 5 * 60 * 1000;
 
 let address = null;
@@ -169,10 +170,15 @@ async function waitForWalletCore() {
 }
 
 async function getVault() {
-  const result = await chrome.storage.local.get(storageKey);
-  const vault = result[storageKey] || null;
+  const result = await chrome.storage.local.get([storageKey, legacyStorageKey]);
+  const vault = result[storageKey] || result[legacyStorageKey] || null;
   if (!vault) return null;
-  return normalizeStoredVault(vault);
+  const normalized = normalizeStoredVault(vault);
+  if (!result[storageKey] && result[legacyStorageKey]) {
+    await storeVault(normalized);
+    await chrome.storage.local.remove(legacyStorageKey);
+  }
+  return normalized;
 }
 
 async function storeVault(vault) {

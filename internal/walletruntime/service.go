@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yankawai/go-web3-wallet/internal/vault"
-	"github.com/yankawai/go-web3-wallet/internal/walletcore"
+	"github.com/yankawai/fluxo-web3-wallet-opensource/internal/vault"
+	"github.com/yankawai/fluxo-web3-wallet-opensource/internal/walletcore"
 )
 
 var ErrAddressMismatch = errors.New("private key does not match vault address")

@@ -1,4 +1,4 @@
-module github.com/yankawai/go-web3-wallet
+module github.com/yankawai/fluxo-web3-wallet-opensource
 
 go 1.26.4
 
