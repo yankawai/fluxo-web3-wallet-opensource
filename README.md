@@ -1,6 +1,8 @@
-# go-web3-wallet
+![Fluxo Web3 Wallet banner](docs/assets/fluxo-banner.png)
 
-Minimal Ethereum wallet browser extension powered by a Go WebAssembly core.
+# Fluxo Web3 Wallet
+
+Fluxo is a minimal open-source Ethereum wallet browser extension powered by a Go WebAssembly core.
 
 The extension is local-first: it does not call RPC providers, does not broadcast transactions, does not inject a provider into pages, and does not send wallet data to any server. The current scope is intentionally narrow: create an encrypted local vault, unlock it locally, show the address, and sign EIP-191 messages.
 
@@ -52,7 +54,7 @@ This writes:
 make package
 ```
 
-The zip file is created as `go-web3-wallet-extension.zip`.
+The zip file is created as `fluxo-web3-wallet-opensource-extension.zip`.
 
 ## Current Capabilities
 
