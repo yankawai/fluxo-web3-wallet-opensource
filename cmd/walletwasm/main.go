@@ -6,38 +6,58 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	"github.com/yankawai/go-web3-wallet/internal/walletcore"
+	"github.com/yankawai/go-web3-wallet/internal/walletruntime"
 )
+
+var runtime = walletruntime.NewService()
 
 func main() {
 	api := map[string]any{
-		"generateWallet":        js.FuncOf(generateWallet),
-		"addressFromPrivateKey": js.FuncOf(addressFromPrivateKey),
-		"signMessage":           js.FuncOf(signMessage),
+		"createVault": js.FuncOf(createVault),
+		"unlockVault": js.FuncOf(unlockVault),
+		"signMessage": js.FuncOf(signMessage),
+		"lock":        js.FuncOf(lock),
+		"lockAll":     js.FuncOf(lockAll),
 	}
 	js.Global().Set("walletCore", api)
 	select {}
 }
 
-func generateWallet(js.Value, []js.Value) any {
-	wallet, err := walletcore.GenerateWallet()
-	return jsonResult(wallet, err)
+func createVault(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsonError("createVault requires password")
+	}
+	response, err := runtime.CreateVault(args[0].String())
+	return jsonResult(response, err)
 }
 
-func addressFromPrivateKey(_ js.Value, args []js.Value) any {
-	if len(args) != 1 {
-		return jsonError("addressFromPrivateKey requires privateKey")
+func unlockVault(_ js.Value, args []js.Value) any {
+	if len(args) != 2 {
+		return jsonError("unlockVault requires vault and password")
 	}
-	address, err := walletcore.AddressFromPrivateKey(args[0].String())
-	return jsonResult(map[string]string{"address": address}, err)
+	response, err := runtime.UnlockVault(args[0].String(), args[1].String())
+	return jsonResult(response, err)
 }
 
 func signMessage(_ js.Value, args []js.Value) any {
 	if len(args) != 2 {
-		return jsonError("signMessage requires privateKey and message")
+		return jsonError("signMessage requires sessionId and message")
 	}
-	signed, err := walletcore.SignMessage(args[0].String(), args[1].String())
+	signed, err := runtime.SignMessage(args[0].String(), args[1].String())
 	return jsonResult(signed, err)
+}
+
+func lock(_ js.Value, args []js.Value) any {
+	if len(args) != 1 {
+		return jsonError("lock requires sessionId")
+	}
+	runtime.Lock(args[0].String())
+	return jsonResult(map[string]bool{"locked": true}, nil)
+}
+
+func lockAll(js.Value, []js.Value) any {
+	runtime.LockAll()
+	return jsonResult(map[string]bool{"locked": true}, nil)
 }
 
 func jsonResult(value any, err error) any {

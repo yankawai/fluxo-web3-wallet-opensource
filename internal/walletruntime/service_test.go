@@ -1,7 +1,9 @@
 package walletruntime
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,5 +53,62 @@ func TestServiceRejectsAddressMismatch(t *testing.T) {
 	_, err := service.openSession("0x1111111111111111111111111111111111111111", testPrivateKey)
 	if !errors.Is(err, ErrAddressMismatch) {
 		t.Fatalf("openSession() error = %v, want %v", err, ErrAddressMismatch)
+	}
+}
+
+func TestServiceCreateVaultDoesNotReturnPrivateKey(t *testing.T) {
+	service := newServiceWithVault(
+		time.Minute,
+		func(_ string, _ string, address string) (vault.Vault, error) {
+			return vault.Vault{
+				Header: vault.Header{
+					Version: vault.FormatVersion,
+					Address: address,
+				},
+				Ciphertext: "encrypted",
+			}, nil
+		},
+		nil,
+	)
+
+	response, err := service.CreateVault("correct horse battery staple")
+	if err != nil {
+		t.Fatalf("CreateVault() error = %v", err)
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if strings.Contains(string(raw), "privateKey") || strings.Contains(string(raw), testPrivateKey) {
+		t.Fatalf("response leaked private key material: %s", string(raw))
+	}
+	if response.SessionID == "" || response.Address == "" {
+		t.Fatalf("session response incomplete: %+v", response)
+	}
+}
+
+func TestServiceUnlockVaultDoesNotReturnPrivateKey(t *testing.T) {
+	service := newServiceWithVault(
+		time.Minute,
+		nil,
+		func(_ vault.Vault, _ string) (vault.UnlockResult, error) {
+			return vault.UnlockResult{
+				PrivateKey: testPrivateKey,
+				Address:    testAddress,
+			}, nil
+		},
+	)
+	rawVault := `{"header":{"version":2,"address":"` + testAddress + `"},"ciphertext":"encrypted"}`
+
+	response, err := service.UnlockVault(rawVault, "correct horse battery staple")
+	if err != nil {
+		t.Fatalf("UnlockVault() error = %v", err)
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if strings.Contains(string(raw), "privateKey") || strings.Contains(string(raw), testPrivateKey) {
+		t.Fatalf("response leaked private key material: %s", string(raw))
 	}
 }
