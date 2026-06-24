@@ -1,5 +1,13 @@
 ![Fluxo banner](docs/assets/fluxo-banner.png)
 
+[![CI](https://github.com/yankawai/fluxo-web3-wallet-opensource/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yankawai/fluxo-web3-wallet-opensource/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/yankawai/fluxo-web3-wallet-opensource/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/yankawai/fluxo-web3-wallet-opensource/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/yankawai/fluxo-web3-wallet-opensource/badge)](https://scorecard.dev/viewer/?uri=github.com/yankawai/fluxo-web3-wallet-opensource)
+[![Go Reference](https://pkg.go.dev/badge/github.com/yankawai/fluxo-web3-wallet-opensource.svg)](https://pkg.go.dev/github.com/yankawai/fluxo-web3-wallet-opensource)
+[![Go Report Card](https://goreportcard.com/badge/github.com/yankawai/fluxo-web3-wallet-opensource)](https://goreportcard.com/report/github.com/yankawai/fluxo-web3-wallet-opensource)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0f172a.svg)](LICENSE)
+[![Security Policy](https://img.shields.io/badge/security-policy-0f172a.svg)](SECURITY.md)
+
 # Fluxo
 
 Fluxo is an open-source headless Web3 wallet core written in Go.
