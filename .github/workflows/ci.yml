@@ -20,3 +20,4 @@ jobs:
           cache: true
       - run: test -z "$(gofmt -l ./cmd ./internal)"
       - run: make check
+      - run: make race

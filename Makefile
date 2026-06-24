@@ -1,7 +1,10 @@
-.PHONY: fmt test vet wasm check clean
+.PHONY: fmt test race vet wasm check clean
 
 test:
 	go test ./...
+
+race:
+	go test -race ./...
 
 vet:
 	go vet ./...
