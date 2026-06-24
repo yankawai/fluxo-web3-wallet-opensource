@@ -1,0 +1,29 @@
+name: Security question
+description: Ask about the threat model, integration boundary, or secure-element path.
+title: "security: "
+labels: ["security"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report suspected vulnerabilities privately according to SECURITY.md. Do not publish secrets or exploit details here.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What security boundary, assumption, or integration detail needs clarification?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Vault encryption
+        - Session signing
+        - WASM integration
+        - Secure element
+        - Network/RPC privacy
+        - Other
+    validations:
+      required: true
